@@ -76,7 +76,7 @@ The following keys are used:
   does not exists, it will be created (mkdir -p).
 - **addsize** An amount of extra space added to "nominal_size" in "os_list.json". This may
   be useful if the project contains empty partitions which are to be created by **PINN**.
-- **part*****[id]*** Is a list of tokens each defining a setting to be used when processing the
+- **part**___[id]___ Is a list of tokens each defining a setting to be used when processing the
   partition with the ident *[id]*. When examining a system image with "fdisk -l system_image.img",
   a list of partitions named "system_image.img1", "system_image.img2", "system_image.img3" and so
   on will be displayed and the idents are the numbers appended to the file name (here: 1, 2 and 3).  
@@ -97,7 +97,7 @@ The following keys are used:
   for all urls in os_list.json.
 - **checksum** The type of checksum wanted (valid values: **sha512sum**, **sha256sum**, **sha1sum**
   and **md5sum**, default is **sha512sum**).
-- ***file*****:*****field*****=*****value*** There may be multiple of these lines which are copied
+- ***file***__:__***field***__=__***value*** There may be multiple of these lines which are copied
   to the wanted JSON file(s). ***file*** may be either **os** for "os.json", **list** for "os_list.json"
   or **both** if the value goes to both "os.json" and "os_list.json". ***field*** may be any of the
   JSON fields listed in the **PINN** documentation and ***value*** is the value of the field. Anything
