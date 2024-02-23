@@ -1,0 +1,6 @@
+About Batocera.linux
+
+Batocera.linux is an open-source and completely free retro-gaming distribution that can be copied to a
+USB stick or an SD card with the aim of turning any computer/nano computer into a gaming console during
+a game or permanently. Batocera.linux does not require any modification on your computer. Note that you
+must own the games you play in order to comply with the law.

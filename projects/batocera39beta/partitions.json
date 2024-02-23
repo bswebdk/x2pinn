@@ -1,0 +1,21 @@
+{
+  "partitions": [
+    {
+      "label": "BATOCERA",
+      "filesystem_type": "FAT",
+      "partition_size_nominal": @part1nominal_size,
+      "want_maximised": false,
+      "uncompressed_tarball_size": @part1tarball_size,
+      "mkfs_options": "-F 32",
+      "sha512sum": "@part1checksum"
+    },
+    {
+      "label": "SHARE",
+      "empty_fs": true,
+      "filesystem_type": "ext4",
+      "partition_size_nominal": 1024,
+      "want_maximised": true,
+      "uncompressed_tarball_size": 0
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+# X2PINN Project File
+# Lines starting with "#" are optional
+
+
+# Archive retreival and output
+#archive  = compressed_system_image.img.gz
+download = https://download.system-images.org/compressed_system_image.img.gz
+output   = ../../output/empty/
+
+
+# Partition handling and selection
+#addsize  = 1024
+part1    = boot +512
+part2    = root +512
+#sector   = 512
+tarballs = @1 @2
+
+
+# Values used to create JSON: https://github.com/procount/pinn/wiki/JSON-fields
+#base_url = http://download.pinn-images.net/empty/
+#checksum = sha512sum
+
+
+# JSON fields for "os.json"
+#os:group             = "General"
+#os:icon              = "empty.png"
+#os:kernel            = "x.y"
+os:name              = "empty"
+#os:password          = "pass"
+#os:riscos_offset     = 123
+os:supports_backup   = true
+#os:supports_sda_boot = true
+#os:supports_sda_root = true
+#os:supports_usb_boot = true
+#os:supports_usb_root = true
+#os:username          = "user"
+#os:version           = "1.2.3"
+
+
+# JSON fields for "os_list.json"
+list:os_name = "empty"
+
+
+# JSON fields for "os.json" and "os_list.json"
+both:description      = "An empty project"
+both:release_date     = "YYYY-MM-DD"
+both:supported_models = [ "Pi Model", "Pi 2", "Pi Zero", "Pi 3", "Pi Compute Module 3", "Pi 4", "Pi 5" ]
+both:url              = "https://www.empty.project"
