@@ -1,0 +1,24 @@
+# Archive retreival and output
+common = ../common/
+
+# Partition handling and selection
+addsize  = 2048
+part1    = BATOCERA +1024
+tarballs = @1 SHARE
+
+# Values used to create JSON
+checksum = sha512sum
+#copy_slides=1
+
+# JSON fields for "os.json"
+os:supports_backup   = true
+os:kernel            = "6.7"
+os:name              = "Batocera"
+
+# JSON fields for "os_list.json"
+list:os_name = "Batocera"
+
+# JSON fields for "os.json" and "os_list.json"
+both:group            = "Games"
+both:version          = "39 Painted Lady"
+both:url              = "https://www.batocera.linux"

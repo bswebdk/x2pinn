@@ -1,0 +1,16 @@
+# X2PINN Project File
+
+# Import common settings
+import = ../common/import.txt
+
+# Archive retreival, common files and output
+download = https://updates.batocera.org/bcm2836/stable/last/batocera-bcm2836-bcm2836-39-20240301.img.gz
+output   = ../../../output/batocera39bcm2836/
+
+# Values used to create JSON
+#base_url = http://downloads.sourceforge.net/project/pinn/os/batocera39bcm2836/
+
+# JSON fields for "os.json" and "os_list.json"
+both:description      = "Retro gaming for BCM2836 based Pi's (2, Zero 2)"
+both:supported_models = [ "Pi 2", "Pi Zero 2" ]
+both:release_date     = "2024-03-01"

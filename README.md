@@ -3,7 +3,7 @@ you are absolutely sure that it is safe to do so! **Really,** ***DON'T..!!!***
 
 ---
 
-# X2PINN rev. 1 - BETA
+# X2PINN rev. 2
 
 The purpose of this **BASH** script is to automate the process of converting a Raspberry
 Pi compatible system image for installation via **PINN**. It has been created and tested
@@ -24,7 +24,7 @@ conversion and then it performs the following workflow:
 During the process, the script will recover informations such as checksums, partition size(s),
 file system sizes(s) and so on which are used to generate the JSON files.
 
-Partitions are mounted to a mount point (directory) named "mnt" in the project directory.
+Partitions are mounted to a mount point (directory) named "*mnt*" in the project directory.
 The mount point will be created and removed by the script with root as owner. If the mount
 point already exists and has content, the script will exit.
 
@@ -46,15 +46,15 @@ The following command line arguments may be used with the script:
 
 ## Project structure
 
-In the project directory, the following files are expected to be found: **x2pinn.txt** and
+In the project directory the following files are expected to be found: **x2pinn.txt** and
 **partitions.json**. You may also put **partition_setup.sh** and **marketing.tar** (*) in the
 project directory, in which case they will be rsync'ed to the output directory, or they may
 be put in the output directory - but they must exist in either location. Optional files are
 **release_notes.txt** and any **\*.png** file(s) which are all rsync'ed to the output
 directory.
 
-**(\*)**  If "marketing.tar" does not exist, but a directory named "slides_vga" does, then
-x2pinn will use **bsdtar** to create "marketing.tar" from "slides_vga".
+**(\*)**  If "*marketing.tar*" does not exist, but a directory named "*slides_vga*" does, then
+x2pinn will use **bsdtar** to create "*marketing.tar*" from "*slides_vga*".
 
 ## The project file: x2pinn.txt
 
@@ -65,65 +65,79 @@ A blank space is used as separator for token lists (**tarballs**, **part[id]**).
 
 The following keys are used:
 
+- **addsize** An amount of extra space added to "*nominal_size*" in "*os_list.json*". This
+  may be useful if the project contains empty partitions which are to be created by **PINN**.
 - **archive** The local name used for the downloaded archive. If undefined, the archive
   name is extracted from **download** by taking what is after the last "/" and then
   what is before the first "?" (if any).
+- **base_url** The base url from where the output is to be downloaded. This is basically a prefix
+  for all urls in "*os_list.json*".
+- **checksum** The type of checksum wanted (valid values: **sha512sum**, **sha256sum**, **sha1sum**
+  and **md5sum**, default is **sha512sum**).
+- **common** If this field points to an existing directory, x2pinn will look for required
+  files in the project directory first, then the specified "*common*" directory. This is useful
+  if multiple projects share common files.
+- **copy_slides** If this field is "1", the "*slides_vga*" directory is, if it exists, rsync'ed to
+  the output directory. This is mostly useful if the output is to be installed from a local source
+  since "*marketing.tar*" is ignored from local sources.
 - **download** This is the URL from where to download the compressed system image with **wget**.
   If undefined, **archive** must point to an existing, local archive file. A previously
   interrupted download will be resumed, if possible.
+- ***file***__:__***field***__=__***value*** There may be multiple of these lines which are copied
+  to the wanted JSON file(s). ***file*** may be either **os** for "*os.json*", **list** for
+  "*os_list.json*" or **both** if the value goes to both "*os.json*" and "*os_list.json*".
+  ***field*** may be any of the JSON fields listed in the **PINN** documentation and ***value***
+  is the value of the field. Anything goes and valid values could be a "quoted string",
+  \[ "an", "array", "of", "values" \] or a simple number / boolean.  
+  **TIP!** If "*list:icon*" is undeclared, x2pinn will create it from the values: *base_url* +
+  *os:name* + *.png*. Note that spaces in *os:name* will be replaced with underscores to comply
+  with **PINN**'s naming scheme.
+- **import** If this field refers to an existing file, the file will be parsed as a project file
+  before the main project file is parsed, which allows you to import common values for multiple
+  projects without redeclaring them for each project. Optimally, this field should be the first
+  field in the main project file. Nested imports are ignored.
 - **output** The destination directory for the generated archive(s), JSON files and so on. This
-  path may be relative to the project file. If undefinied, "os" is used. If the specified path
-  does not exists, it will be created (mkdir -p).
-- **addsize** An amount of extra space added to "nominal_size" in "os_list.json". This may
-  be useful if the project contains empty partitions which are to be created by **PINN**.
+  path may be relative to the project file. If undefinied, "*os*" is used. If the specified path
+  does not exists, it will be created (*mkdir -p*).
 - **part**___[id]___ Is a list of tokens each defining a setting to be used when processing the
-  partition with the ident *[id]*. When examining a system image with "fdisk -l system_image.img",
-  a list of partitions named "system_image.img1", "system_image.img2", "system_image.img3" and so
-  on will be displayed and the idents are the numbers appended to the file name (here: 1, 2 and 3).  
+  partition with the ident *[id]*. When examining a system image with "*fdisk -l system_image.img*",
+  a list of partitions named "*system_image.img1*", "*system_image.img2*", "*system_image.img3*"
+  and so on will be displayed and the idents are the numbers appended to the file name (here:
+  1, 2 and 3).  
   The first token ***MUST*** be the name of the partition which is used to create the output
-  tarball/archive. After this, there may be added zero or more of the following tokens:  
-  > **nosock** Delete all socket files in the file system.  
-  > **getfacl** Generate a "acl_permissions.pinn" file in the file systems root directory,
-    the file will not be stored if empty.  
-  > **+*****[n]*** A value to add to the nominal size of the file system. A valid value
-    could be **+512** which would add 512MiB to the actual size of the file system.
-- **sector** The sector size used in the system images. If undefined, an attempt to extract
-  it with **fdisk** from the system image itself will be attempted.
+  tarball/archive. After this, there may be added zero or more of the following tokens:
+
+  > - **nosock** Delete all socket files in the file system.
+  > - **getfacl** Generate a "acl_permissions.pinn" file in the file systems root directory,
+      the file will not be stored if empty.
+  > - **+**___[n]___ A value to add to the nominal size of the file system. A valid value
+      could be **+512** which would add 512MiB to the actual size of the file system.
+  > - **=**___[n]___ If the specified value is greater than the actual size of the file system,
+      this value will override the size of file system. This is useful if you want
+      to enforce a certain size of the file system.
+
 - **tarballs** A list of tokens defining the names of the partitions / tarballs which has to
-  be added to "os_list.json". You may use **@*****[id]*** which will be substituted with the
+  be added to "*os_list.json*". You may use **@*****[id]*** which will be substituted with the
   name of the partition with the specified ident. If **tarballs** is undefined, all the processed
   partition names is used instead.
-- **base_url** The base url from where the output is to be downloaded. This is basically a prefix
-  for all urls in os_list.json.
-- **checksum** The type of checksum wanted (valid values: **sha512sum**, **sha256sum**, **sha1sum**
-  and **md5sum**, default is **sha512sum**).
-- ***file***__:__***field***__=__***value*** There may be multiple of these lines which are copied
-  to the wanted JSON file(s). ***file*** may be either **os** for "os.json", **list** for "os_list.json"
-  or **both** if the value goes to both "os.json" and "os_list.json". ***field*** may be any of the
-  JSON fields listed in the **PINN** documentation and ***value*** is the value of the field. Anything
-  goes and valid values could be a "quoted string", \[ "an", "array", "of", "values" \] or a simple
-  number / boolean.  
-  **TIP!** If "*list:icon*" is undeclared, x2pinn will create it from the values: *base_url* +
-  *os:name* + *.png*.
   
 You may also use x2pinn to convert an existing system from a bootable block device (SD-card, USB-drive
 etc.). To do this, **download** must be undefined and **archive** must be set to the wanted device (eg.
-"/dev/sdb" and ***NOT*** "/dev/sdb1") and make sure that all partitions in the selected device are
+"*/dev/sdb*" and ***NOT*** "*/dev/sdb1*") and make sure that all partitions in the selected device are
 **un-mounted**. Please remember to **back up the original system** before processing it with x2pinn!
 
 ### partitions.json
 
-The template version of the "partitions.json" file used by **PINN** may use the following
+The template version of the "*partitions.json*" file used by **PINN** may use the following
 variables which are then substituted in the output:
 
-- **@part[id]size** The actual size of the partition including empty space.
+- **@part[id]checksum** The checksum of the compressed tarball.
 - **@part[id]nominal_size** The nominal size of the file system excluding empty space
   but including extra space defined for the partition.
+- **@part[id]size** The actual size of the partition including empty space.
 - **@part[id]tarball_size** The size of the uncompressed tarball.
-- **@part[id]checksum** The checksum of the compressed tarball.
 
-All sizes are in MiB (bytes / 1048576) and *[id]* is a substitude for the
-partition ident.
+All sizes are in MiB (bytes / 1048576) and *[id]* is a substitude for the partition ident.
 
 ## Exit status
 
@@ -141,7 +155,7 @@ cleanup. Exit status of the script is either of the following:
 > **8** **release_date** has not changed since last success.  
 > **9** **download** is unspecified.  
 > **10** Unsupported archive type.  
-> **11** **sector** is unspecified.  
+> **11** Output from **fdisk** could not be parsed.  
 > **12** Partition settings are unspecified or malformed.  
 
 ## Sources of information
@@ -149,3 +163,14 @@ cleanup. Exit status of the script is either of the following:
 - [PINN Readme](https://github.com/procount/pinn/blob/master/README_PINN.md)
 - [PINN How to multiboot existing OS'es](https://github.com/procount/pinn/wiki/How-to-Create-a-Multi-Boot-SD-card-out-of-2-existing-OSes-using-PINN)
 - [PINN JSON fields](https://github.com/procount/pinn/wiki/JSON-fields)
+
+## Revision 2
+- If a file named "*extracted.img*" (extracted system image) is found, skip download and/or extraction of archive.
+- Project fields/keys **common** and **import** added.
+- Added partition setting **=**___[n]___.
+- Empty mount directory detected as not empty.
+- Using "*/dev/sdX*" as **archive** would cause mount failure.
+- **sector** is deprecated and should no longer be used.
+
+## Revision 1 BETA
+- The primal soup.

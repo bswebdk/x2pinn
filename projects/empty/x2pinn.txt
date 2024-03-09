@@ -1,9 +1,11 @@
 # X2PINN Project File
 # Lines starting with "#" are optional
 
+#import = ../common/import.txt
 
 # Archive retreival and output
 #archive  = compressed_system_image.img.gz
+#common   = ../common
 download = https://download.system-images.org/compressed_system_image.img.gz
 output   = ../../output/empty/
 
@@ -12,7 +14,6 @@ output   = ../../output/empty/
 #addsize  = 1024
 part1    = boot +512
 part2    = root +512
-#sector   = 512
 tarballs = @1 @2
 
 

@@ -13,7 +13,7 @@
       "label": "SHARE",
       "empty_fs": true,
       "filesystem_type": "ext4",
-      "partition_size_nominal": 1024,
+      "partition_size_nominal": 2048,
       "want_maximised": true,
       "uncompressed_tarball_size": 0
     }

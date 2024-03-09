@@ -2,7 +2,7 @@
 #
 #  Copyright (c) 2024 Torben Bruchhaus
 #  File: x2pinn.sh
-#  Revision 1 BETA
+#  Revision 2
 #
 #  x2pinn is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -17,7 +17,6 @@
 #  You should have received a copy of the GNU General Public License
 #  along with x2pinn.  If not, see <http://www.gnu.org/licenses/>.
 
-
 # Error codes
 E_NOT_ROOT=1
 E_BAD_ARG=2
@@ -29,7 +28,7 @@ E_ARCHIVE_NAME=7
 E_UNCHANGED=8
 E_NO_DOWNLOAD=9
 E_BAD_ARCHIVE=10
-E_NO_SECTOR=11
+E_BAD_FDISK=11
 E_NO_PART_CFG=12
 
 # Make sure that the script is running as root
@@ -78,17 +77,24 @@ debug_print "use_tar='$use_tar'"
 debug_print "use_xz='$use_xz'"
 debug_print "fdisk_only='$fdisk_only'"
 
+# Directory used as mount point for partitions, do NOT change this without understanding the mount procedure!!!
+mount_dir="mnt"
+if [ -d $mount_dir ] && [ -n "$(ls -A $mount_dir)" ]; then
+  echo "Directory '$mount_dir' already exists and is not empty"
+  exit $E_MNT_EXISTS
+fi
+
+# Checks exit status of a process and exits the script if non-sero
 function check_status() {
-  # Checks exit status of a process and exits the script if non-sero
   if [ $2 -ne 0 ]; then
     echo "Command '$1' failed with exit status $2"
     if [ -z "$3" ]; then exit $E_CMD_NONZERO; else exit $3; fi
   fi
 }
 
+# Used to set ownership for files and dirs to $SUDO_USER
 function do_chown() {
-  # Used to set ownership for files and dirs to $SUDO_USER
-  if [[ ($SUDO_UID -ne 0) && ($SUDO_GID -ne 0) ]]; then
+  if [ $SUDO_UID -ne 0 ] && [ $SUDO_GID -ne 0 ]; then
     if [ -d "$1" ]; then
       chown -R $SUDO_UID":"$SUDO_GID "$1"
     elif [ -f "$1" ]; then
@@ -98,12 +104,14 @@ function do_chown() {
   fi
 }
 
-# Directory used as mount point for partitions, do NOT change this without understanding the mount procedure!!!
-mount_dir="mnt"
-if [[ (-d "$mount_dir") && (-n $(ls -A "$mount_dir")) ]]; then
-  echo "Directory '$mount_dir' already exists and is not empty"
-  exit $E_MNT_EXISTS
-fi
+# Checks for existence of a required file
+function must_exist() {
+  for arg in $@; do
+    if [ -f "$arg" ]; then return 0; fi;
+  done
+  echo "File '$1' was not found!"
+  exit $E_MISSING_FILE
+}
 
 # Declare name of project file
 project_file="x2pinn.txt"
@@ -111,19 +119,25 @@ project_file="x2pinn.txt"
 # Declare name for extracted image file
 extract_name="extracted.img"
 
+# Verify existence of project file
+must_exist "$project_file"
+
 # Load project file and ignore lines starting with '#'
 echo "Loading project file '$project_file'.."
 project=$(grep -v ^"#" "$project_file")
 
 # Grab global variables from the project
+import=""
+
 archive=""
+common=""
 download=""
 output=""
 
+cp_slides=""
 addsize=0
 parts=""
 partcfg=()
-sector=""
 tarballs=""
 
 base_url=""
@@ -132,78 +146,107 @@ release_date=""
 
 json_fields=""
 
-# Used to split a string by a delimiter
+# RegEx used to trim the ends of a string
 sed_trim='s/^[ \t]*//;s/[ \t]*$//'
 
+# RegEx used to validate a number / integer
+sed_numval='s/^([0-9]{1,})$/\1/p'
+
+# Used to split a string by a delimiter
 function split_string() {
   local delim=$2
   if [ -z "$delim" ]; then delim="="; fi
-  split1=$(echo "$1" | awk -F "$delim" '{print $1}' | sed "$sed_trim")
-  split2=$(echo "$1" | awk -F "$delim" '{$1=""; print $0}' | sed "$sed_trim")
+  split1=$(echo "${1%%$delim*}" | sed "$sed_trim")
+  split2=$(echo "${1#*$delim}" | sed "$sed_trim")
 }
 
-while [ -n "$project" ]; do
+function parse_project() {
+
+  local src=$1
   
-  line=$(echo "$project" | head -n 1 | sed "$sed_trim")
-  project=$(echo "$project" | tail -n +2)
-  
-  #echo "$line"
-  
-  if [ -n "$line" ]; then
-  
-    split_string "$line"
-    #echo "split1='$split1', split2='$split2'"
+  while [ -n "$src" ]; do
     
-    case $split1 in
-      archive)
-        archive=$split2
-        ;;
-      download)
-        download=$split2
-        ;;
-      output)
-        output=$split2
-        ;;
-
-      addsize)
-        addsize=$split2
-        ;;
-      part*)
-        line=${line:4}   # Remove first 4
-        split_string "$line"
-        parts="$parts$split1 "
-        debug_print "partcfg='$line'"
-        partcfg+=("$line") # Add to array
-        ;;
-      sector)
-        sector=$split2
-        ;;
-      tarballs)
-        tarballs=$split2
-        ;;
-
-      base_url)
-        base_url=$split2
-        ;;
-      checksum)
-        checksum=$split2
-        ;;
-
-      *)
-        tok=${split1::5}
-        if [[ "$tok" = "list:" || "$tok" = "both:" || "${split1::3}" = "os:" ]]; then
-          if [ "${split1:5}" = "release_date" ]; then release_date=$(printf $split2 | xargs); fi
-          json_fields="$json_fields$line\n"
-        else
-          echo "Project contains invalid field '$split1' in line '$line'"
-          exit $E_BAD_KEY
-        fi
-        ;;
-    esac
+    local line=$(echo "$src" | head -n 1 | sed "$sed_trim")
+    src=$(echo "$src" | tail -n +2)
     
-  fi
-  
-done
+    #echo "$line"
+    
+    if [ -n "$line" ]; then
+    
+      split_string "$line"
+      #echo "split1='$split1', split2='$split2'"
+      
+      case $split1 in
+        archive)
+          archive=$split2
+          ;;
+        common)
+          common=$split2
+          ;;
+        download)
+          download=$split2
+          ;;
+        import)
+          if [ $2 -eq 1 ] && [ -f "$split2" ]; then
+            import=$(grep -v ^"#" "$split2")
+            return 0
+          fi
+          ;;
+        output)
+          output=$split2
+          ;;
+
+        addsize)
+          addsize=$split2
+          ;;
+        copy_slides)
+          cp_slides=$split2
+          ;;
+        part*)
+          line=${line:4}   # Remove first 4
+          split_string "$line"
+          parts="$parts$split1 "
+          debug_print "partcfg='$line'"
+          partcfg+=("$line") # Add to array
+          ;;
+        sector)
+          echo "Field 'sector' is deprecated and should no longer be used."
+          ;;
+        tarballs)
+          tarballs=$split2
+          ;;
+
+        base_url)
+          base_url=$split2
+          ;;
+        checksum)
+          checksum=$split2
+          ;;
+
+        *)
+          tok=${split1::5}
+          if [ "$tok" = "list:" ] || [ "$tok" = "both:" ] || [ "${split1::3}" = "os:" ]; then
+            if [ "${split1:5}" = "release_date" ]; then release_date=$(printf $split2 | xargs); fi
+            json_fields="$json_fields$line\n"
+          else
+            echo "Project contains invalid field '$split1' in line '$line'"
+            exit $E_BAD_KEY
+          fi
+          ;;
+      esac
+      
+    fi
+    
+  done
+
+}
+
+# Load project and import if specified
+parse_project "$project" 1
+if [ -n "$import" ]; then
+  parse_project "$import" 0
+  parse_project "$project" 0
+fi
 
 # If archive is undeclared, grab it from download and verify
 if [ -z "$archive" ]; then
@@ -230,17 +273,19 @@ if [ -z "$tarballs" ]; then
   tarballs=${tarballs:1}
 fi
 
-# If output is undeclared, use "os" and get realpath
+# If output is undeclared, use "os" and get an absolute path
 if [ -z "$output" ]; then output="os"; fi
 output=$(realpath -ms "$output")
 
 debug_print "archive='$archive'"
+debug_print "common='$common'"
 debug_print "download='$download'"
 debug_print "output='$output'"
 
 debug_print "addsize='$addsize'"
+debug_print "cp_slides='$cp_slides'"
 debug_print "parts='$parts'"
-debug_print "sector='$sector'"
+#debug_print "sector='$sector'"
 debug_print "tarballs='$tarballs'"
 
 debug_print "base_url='$base_url'"
@@ -250,38 +295,55 @@ debug_print "$json_fields"
 
 # Check for release date change
 check_file="$project_file"".rd"
-if [[ ($use_check -eq 1) && (-f "$check_file") ]]; then
+if [ $use_check -eq 1 ] && [ -f "$check_file" ]; then
   if [ "$release_date" = "$(cat $check_file)" ]; then
     echo "Release date has not changed, bye.."
     exit $E_UNCHANGED
   fi
 fi
 
-# Checks for existence of a required file
-function must_exist() {
-  for arg in $@; do
-    if [ -f "$arg" ]; then return 0; fi;
-  done
-  echo "File '$1' was not found!"
-  exit $E_MISSING_FILE
+# Used to locate required resources
+function find_rc() {
+  if [ ! -f "$1" ] && [ ! -d "$1" ] && [ -d "$common" ]; then
+    local fn=$(realpath --relative-to=. -ms "$common/$1")
+    if [ -f "$fn" ] || [ -d "$fn" ]; then
+      if [ ${fn:(-1)} = "/" ]; then fn=${fn::-1}; fi
+      echo "$fn"
+      return 0
+    fi
+  fi
+  echo "$1"
 }
 
-# Validate existence of required files..
-must_exist "$project_file"
-must_exist "partitions.json"
-must_exist "partition_setup.sh" "$output/partition_setup.sh"
+# Find files
+partitions=$(find_rc "partitions.json")
+part_setup=$(find_rc "partition_setup.sh")
+slides_dir=$(find_rc "slides_vga")
+rele_notes=$(find_rc "release_notes.txt")
 
-# If marketing.tar does not exists in src or dst, an attempt to create it from "slides_vga" will be made
-slides_dir="slides_vga"
+# Debug
+debug_print "partitions='$partitions'"
+debug_print "part_setup='$part_setup'"
+debug_print "slides_dir='$slides_dir'"
+
+# Verify existence of required files
+must_exist "$partitions"
+must_exist "$part_setup" "$output/$part_setup"
+
+# If marketing.tar does not exists in src or dst, try to create it from "slides_vga"
 slides_tar="marketing.tar"
-
-if [ -d "$slides_dir" ]; then
-  if [[ (! -f "$slides_tar") && (! -f "$output/$slides_tar") ]]; then
-    echo "Creating '$slides_tar' from '$slides_dir'.."
-    bsdtar --numeric-owner --format gnutar -cpvf "$slides_tar" "$slides_dir" 2> /dev/null
+if [ -d "$slides_dir" ] && [ ! -f "$slides_tar" ] && [ ! -f "$output/$slides_tar" ]; then
+  tmp=$(realpath --relative-to=. -ms "$slides_dir/../$slides_tar")
+  if [ ! -f "$tmp" ]; then
+    echo "Creating '$tmp' from '$slides_dir'.."
+    bsdtar --numeric-owner --format gnutar -cpvf "$tmp" "$slides_dir" 2> /dev/null
+    check_status "bsdtar" $?
   fi
+  slides_tar=$tmp
 fi
-must_exist "$slides_tar" "$output/$slides_tar"
+
+debug_print "slides_tar='$slides_tar'"
+must_exist "$slides_tar" "$output/marketing.tar"
 
 # Used to determine whether we are handling a block device
 blockdev=0
@@ -300,6 +362,11 @@ if [ "${archive:0:5}" = "/dev/" ]; then
     exit $E_MISSING_FILE
     
   fi
+  
+elif [ -f "$extract_name" ]; then
+
+  # No need to download and/or extract
+  echo "Using extracted image '$extract_name'.."
   
 else
 
@@ -323,49 +390,40 @@ else
 
   fi
 
-  # Has archive been extracted?
-  if [ -f "$extract_name" ]; then
+  # Extract the archive..
+  ext=${archive##*.}
+  debug_print "Archive extension: '$ext'"
+  echo "Extracting archive '$archive' as '$extract_name'.."
 
-    echo "Archive '$archive' already extracted to '$extract_name', not re-extracting"
-    
-  else
-
-    # No, do so..
-    ext=${archive##*.}
-    debug_print "Archive extension: '$ext'"
-    echo "Extracting archive '$archive' as '$extract_name'.."
-
-    case $ext in
-      gz)
-        gunzip -c "$archive" > "$extract_name"
-        check_status "gunzip" $?
-        ;;
-      xz)
-        unxz -c "$archive" > "$extract_name"
-        check_status "unxz" $?
-        ;;
-      lzma)
-        unlzma -c "$archive" > "$extract_name"
-        check_status "unlzma" $?
-        ;;
-      7z)
-        7z e -so "$archive" > "$extract_name"
-        check_status "7z" $?
-        ;;
-      zip)
-        unzip -p "$archive" > "$extract_name"
-        check_status "unzip" $?
-        ;;
-      *)
-        echo "Unsupported archive type: '$ext'"
-        exit $E_BAD_ARCHIVE
-        ;;
-    esac
-    
-    do_chown "$extract_name"
-
-  fi
+  case $ext in
+    gz)
+      gunzip -c "$archive" > "$extract_name"
+      check_status "gunzip" $?
+      ;;
+    xz)
+      unxz -c "$archive" > "$extract_name"
+      check_status "unxz" $?
+      ;;
+    lzma)
+      unlzma -c "$archive" > "$extract_name"
+      check_status "unlzma" $?
+      ;;
+    7z)
+      7z e -so "$archive" > "$extract_name"
+      check_status "7z" $?
+      ;;
+    zip)
+      unzip -p "$archive" > "$extract_name"
+      check_status "unzip" $?
+      ;;
+    *)
+      echo "Unsupported archive type: '$ext'"
+      exit $E_BAD_ARCHIVE
+      ;;
+  esac
   
+  do_chown "$extract_name"
+
 fi
 
 echo "Examining the extracted image.."
@@ -375,20 +433,21 @@ if [ $fdisk_only -eq 1 ]; then
   echo "fdisk only selected, bye bye.."
   exit
 else
-  fdisk_out=$(fdisk -l -o Device,Start,Sectors "$extract_name")
+  fdisk_out=$(fdisk -l --bytes -o Device,Start,Sectors,Size "$extract_name")
   check_status "fdisk" $?
   debug_print "$fdisk_out"
 fi
 
 # Extract sector size if undefined
-if [ -z "$sector" ]; then
-  sector=$(echo "$fdisk_out" | grep "Sector size" | awk '{print $(NF-1)}')
-  debug_print "Extracted sector size is: $sector"
-  if [ -z "$sector" ]; then
-    echo "Unable to extract sector size, please define it with 'sector=size' in the project"
-    exit $E_NO_SECTOR
-  fi
-fi
+#if [ -z "$sector" ]; then
+  #sector=$(echo "$fdisk_out" | grep "Sector size" | awk '{print $(NF-1)}')
+  #sector=$(echo "$fdisk_out" | sed -En 's/.*([ ][0-9]{1,}[ ]\*{1}[ ][0-9]{1,}[ ]=[ ])([0-9]{1,}).*/\2/p')
+  #debug_print "Extracted sector size is: $sector"
+  #if [ -z "$sector" ]; then
+    #echo "Unable to extract sector size, please define it with 'sector=size' in the project"
+    #exit $E_NO_SECTOR
+  #fi
+#fi
 
 # Replace one string with another string in a string
 function string_replace() {
@@ -413,6 +472,7 @@ function get_partcfg() {
   p_getfacl=0
   p_linux=0
   p_name=""
+  p_abs=0
   p_add=0
   p_id=$1
   
@@ -433,6 +493,7 @@ function get_partcfg() {
         elif [ $tok = "getfacl" ]; then p_getfacl=1
         #elif [ $tok = "linux" ]; then p_linux=1
         elif [ ${tok:0:1} = "+" ]; then p_add=${tok:1}
+        elif [ ${tok:0:1} = "=" ]; then p_abs=${tok:1}
         else
           echo "Unknown partition setting: '$tok'!"
           exit $E_NO_PART_CFG
@@ -443,6 +504,7 @@ function get_partcfg() {
       debug_print "p_name='$p_name'"
       debug_print "p_nosock='$p_nosock'"
       debug_print "p_getfacl='$p_getfacl'"
+      debug_print "p_abs='$p_add'"
       debug_print "p_add='$p_add'"
 
       return 1
@@ -461,7 +523,7 @@ download_size=0
 nominal_size=0
 
 # Load partitions.json
-partitions=$(cat "partitions.json")
+partitions=$(cat "$partitions")
 
 # Create output dir, if not exists
 if [ ! -d "$output" ]; then
@@ -479,19 +541,20 @@ fi
 
 # Used to rsync files in the project directory to output
 function rsync_file() {
-  if [ -f "$1" ]; then
-    rsync -pEtu $1 "$output/"
-    check_status "rsync" $?
+  if [ -f "$1" ]; then rsync -pEtu $1 "$output/"
+  elif [ -d "$1" ]; then rsync -pEtur $1 "$output/"
   fi
+  check_status "rsync" $?
 }
 
 # Rsync files to output
 echo "Synchronizing files to output.."
-ps_name="partition_setup.sh"
-rsync_file $ps_name
+rsync_file $part_setup
+rsync_file $slides_tar
+if [ -d "$slides_dir" ] && [ $cp_slides = "1" ]; then rsync_file "$slides_dir"; fi
 rsync_file *.png
-rsync_file marketing.tar
-rsync_file release_notes.txt
+if [ -d "$common" ]; then rsync_file "$common/"*.png; fi
+rsync_file "$rele_notes"
 
 # Stuff used to generate JSON
 json_indent="\t"
@@ -535,7 +598,7 @@ function json_append() {
 echo "Generating os.json.."
 json="{\n"
 json_append_fields "os" "name"
-json_append "$checksum" "$(get_checksum "$output/$ps_name")" 1
+json_append "$checksum" "$(get_checksum "$output/partition_setup.sh")" 1
 echo -e "${json::-3}\n}" > "$output/os.json"
 icon=$(echo $json_grab | sed 's/^"//;s/"$//')
 
@@ -548,28 +611,43 @@ for part_id in ${parts[@]}; do
   part_info=$(echo "$fdisk_out" | grep ^"$extract_name$part_id")
   
   # Get start and size (in sectors / blocks)
-  part_first=$(echo "$part_info" | awk '{print $2}')
-  part_count=$(echo "$part_info" | awk '{print $3}')
+  part_first=$(echo "$part_info" | awk '{print $2}' | sed -En $sed_numval)
+  part_count=$(echo "$part_info" | awk '{print $3}' | sed -En $sed_numval)
+  part_bytes=$(echo "$part_info" | awk '{print $4}' | sed -En $sed_numval)
+  
+  # Validate the values
+  if [ -z "$part_first" ] || [ -z "$part_count" ] || [ -z "$part_bytes" ]; then
+    echo "fdisk returned non-parseable info: '$part_info'!"
+    exit $E_BAD_FDISK
+  fi
+  
+  # Calculate sector size as: byte size / sector count
+  part_sector=$((part_bytes / part_count))
+  
   debug_print "part_first='$part_first'"
   debug_print "part_count='$part_count'"
+  debug_print "part_bytes='$part_bytes'"
+  debug_print "part_sector='$part_sector'"
   
-  echo "Handling partition: $part_id, first sector=$part_first, sector count=$part_count"
+  echo "Handling partition '$part_id': sector size=$part_sector, first=$part_first, count=$part_count, bytes=$part_bytes"
   
   get_partcfg "$part_id"
   
   tarballs=$(string_replace "$tarballs" "@$part_id" "$p_name")
   
-  part_size=$((part_count * sector))
-  debug_print "part_size='$part_size'"
-    
   mount_args=""
-  if [ $blockdev -eq 0 ]; then mount_args="-o loop,rw,offset=$((part_first * sector)),sizelimit=$part_size "; fi
+  mount_name=$extract_name
+  if [ $blockdev -eq 1 ]; then
+    mount_name=$mount_name$part_id
+  else
+    mount_args="-o loop,rw,offset=$((part_first * part_sector)),sizelimit=$part_bytes ";
+  fi
     
-  debug_print "mount $mount_args\"$extract_name\" \"$mount_dir\""
+  debug_print "mount $mount_args\"$mount_name\" \"$mount_dir\""
     
   # Mount the partition
   echo "Mounting partition.."
-  mount $mount_args"$extract_name" "$mount_dir"
+  mount $mount_args"$mount_name" "$mount_dir"
   check_status "mount" $?
   echo "Partition mounted.."
     
@@ -603,7 +681,13 @@ for part_id in ${parts[@]}; do
   if [ $use_tar -eq 1 ]; then
   
     echo "Creating tarball '$tar_name'.."
-    bsdtar --numeric-owner --format gnutar -cpvf "$tar_name" . 2> /dev/null
+    if [ $use_debug -eq 1 ]; then
+      echo -ne "\033[0;34m"
+      bsdtar --numeric-owner --format gnutar -cpvf "$tar_name" .
+      echo -ne "\033[0m"
+    else
+      bsdtar --numeric-owner --format gnutar -cpvf "$tar_name" . 2> /dev/null
+    fi
     check_status "bsdtar" $?
     tar_size=$(stat --printf="%s" "$tar_name")
     check_status "stat" $?
@@ -616,8 +700,13 @@ for part_id in ${parts[@]}; do
   fi
   
   tar_size_mb=$((tar_size / 1048576 + 1))
-  #nom_size=$((tar_size_mb + p_add))
-  nom_size=$((fsys_size + p_add))
+  
+  if [ $p_abs -gt $fsys_size ]; then
+    nom_size=$((p_abs + p_add))
+  else
+    nom_size=$((fsys_size + p_add))
+  fi
+  
   debug_print "tar_size='$tar_size'"
   debug_print "tar_size_mb='$tar_size_mb'"
   debug_print "nom_size='$nom_size'"
@@ -655,7 +744,7 @@ for part_id in ${parts[@]}; do
   debug_print "checksum='$xz_hash'"
     
   # Perform partitions specific replacements
-  partitions=$(string_replace "$partitions" "@part"$part_id"size" "$((part_size))")
+  partitions=$(string_replace "$partitions" "@part"$part_id"size" "$((part_bytes))")
   partitions=$(string_replace "$partitions" "@part"$part_id"nominal_size" "$((nom_size))")
   partitions=$(string_replace "$partitions" "@part"$part_id"tarball_size" "$((tar_size_mb))")
   partitions=$(string_replace "$partitions" "@part"$part_id"checksum" "$xz_hash")
@@ -692,7 +781,10 @@ tballs="${tballs::-3}\n$json_indent]"
 
 json_append "nominal_size" "$((nominal_size + addsize))" 0
 json_append "download_size" "$download_size" 0
-if [[ -z "$json_grab" && -n "$icon" ]]; then json_append "icon" "$base_url$icon"".png" 1; fi
+if [ -z "$json_grab" ] && [ -n "$icon" ]; then
+  icon=$(echo -n "$icon" | sed 's/ /_/g')
+  json_append "icon" "$base_url$icon"".png" 1
+fi
 json_append "marketing_info" "$base_url""marketing.jar" 1
 json_append "os_info" "$base_url""os.json" 1
 json_append "partition_setup" "$base_url""partition_setup.sh" 1

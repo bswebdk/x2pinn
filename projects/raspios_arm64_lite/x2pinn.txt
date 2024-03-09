@@ -10,7 +10,6 @@ output   = ../../output/raspios_arm64_lite/
 addsize  = 2
 part1    = boot +449
 part2    = root +450
-#sector   = 512
 #tarballs = @1 @2
 
 
