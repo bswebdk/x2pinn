@@ -3,7 +3,7 @@ you are absolutely sure that it is safe to do so! **Really,** ***DON'T..!!!***
 
 ---
 
-# X2PINN rev. 2
+# X2PINN rev. 3
 
 The purpose of this **BASH** script is to automate the process of converting a Raspberry
 Pi compatible system image for installation via **PINN**. It has been created and tested
