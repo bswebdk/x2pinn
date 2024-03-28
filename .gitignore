@@ -2,3 +2,8 @@
 .git
 junk/*
 output/*
+*.xz
+*.gz
+*.img
+*.rd
+*.tar

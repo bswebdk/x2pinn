@@ -164,6 +164,10 @@ cleanup. Exit status of the script is either of the following:
 - [PINN How to multiboot existing OS'es](https://github.com/procount/pinn/wiki/How-to-Create-a-Multi-Boot-SD-card-out-of-2-existing-OSes-using-PINN)
 - [PINN JSON fields](https://github.com/procount/pinn/wiki/JSON-fields)
 
+## Revision 3
+- Change ownership of "marketing.tar" to user.
+- Line 555: Unary operator expected
+
 ## Revision 2
 - If a file named "*extracted.img*" (extracted system image) is found, skip download and/or extraction of archive.
 - Project fields/keys **common** and **import** added.

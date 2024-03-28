@@ -134,7 +134,7 @@ common=""
 download=""
 output=""
 
-cp_slides=""
+cp_slides=0
 addsize=0
 parts=""
 partcfg=()
@@ -200,7 +200,7 @@ function parse_project() {
           addsize=$split2
           ;;
         copy_slides)
-          cp_slides=$split2
+          if [ "$split2" = "1" ]; then cp_slides=1; fi
           ;;
         part*)
           line=${line:4}   # Remove first 4
@@ -338,6 +338,7 @@ if [ -d "$slides_dir" ] && [ ! -f "$slides_tar" ] && [ ! -f "$output/$slides_tar
     echo "Creating '$tmp' from '$slides_dir'.."
     bsdtar --numeric-owner --format gnutar -cpvf "$tmp" "$slides_dir" 2> /dev/null
     check_status "bsdtar" $?
+    do_chown "$tmp"
   fi
   slides_tar=$tmp
 fi
@@ -551,7 +552,7 @@ function rsync_file() {
 echo "Synchronizing files to output.."
 rsync_file $part_setup
 rsync_file $slides_tar
-if [ -d "$slides_dir" ] && [ $cp_slides = "1" ]; then rsync_file "$slides_dir"; fi
+if [ -d "$slides_dir" ] && [ $cp_slides -eq 1 ]; then rsync_file "$slides_dir"; fi
 rsync_file *.png
 if [ -d "$common" ]; then rsync_file "$common/"*.png; fi
 rsync_file "$rele_notes"
